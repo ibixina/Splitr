@@ -34,16 +34,28 @@
             this._setupLinkInterception();
             this._setupKeyboardShortcuts();
 
-            // Check if we were active before a reload
-            chrome.storage.local.get(['splitview_active_page', 'splitview_scroll_y'], (result) => {
-                if (chrome.runtime.lastError) {
-                    console.error('[SplitView] Failed to load active state:', chrome.runtime.lastError);
-                    return;
+            // Check if we should be active on this page
+            chrome.storage.local.get(
+                ['splitview_active_pages', 'splitview_scroll_y', 'splitview_csp_ready'],
+                (result) => {
+                    if (chrome.runtime.lastError) {
+                        console.error('[SplitView] Failed to load active state:', chrome.runtime.lastError);
+                        return;
+                    }
+
+                    const activePages = result.splitview_active_pages || {};
+                    if (!activePages[this.pageKey]) return;
+
+                    if (result.splitview_csp_ready === this.pageKey) {
+                        // CSP headers were already bypassed (we just reloaded) — restore state
+                        chrome.storage.local.remove(['splitview_csp_ready']);
+                        this._restoreActiveState(result.splitview_scroll_y || 0);
+                    } else {
+                        // Fresh visit — need to enable CSP bypass and reload
+                        this._enableBypassAndReload();
+                    }
                 }
-                if (result.splitview_active_page === this.pageKey) {
-                    this._restoreActiveState(result.splitview_scroll_y || 0);
-                }
-            });
+            );
         }
 
         // ===== Storage =====
@@ -188,16 +200,45 @@
             this.activeIndicator.style.display = 'block';
             document.body.classList.add('splitview-active');
 
-            // Save scroll position and enable header bypass, then reload
-            chrome.storage.local.set({
-                splitview_active_page: this.pageKey,
-                splitview_scroll_y: window.scrollY
-            }, () => {
+            // Mark this page as persistently active, save scroll, then reload with CSP bypass
+            chrome.storage.local.get(['splitview_active_pages'], (result) => {
                 if (chrome.runtime.lastError) {
-                    console.error('[SplitView] Failed to save active state:', chrome.runtime.lastError);
+                    console.error('[SplitView] Failed to read active pages:', chrome.runtime.lastError);
                     return;
                 }
-                chrome.runtime.sendMessage({ action: 'enableHeaderBypass' }, (response) => {
+                const activePages = result.splitview_active_pages || {};
+                activePages[this.pageKey] = true;
+
+                chrome.storage.local.set({
+                    splitview_active_pages: activePages,
+                    splitview_scroll_y: window.scrollY,
+                    splitview_csp_ready: this.pageKey
+                }, () => {
+                    if (chrome.runtime.lastError) {
+                        console.error('[SplitView] Failed to save active state:', chrome.runtime.lastError);
+                        return;
+                    }
+                    chrome.runtime.sendMessage({ action: 'enableHeaderBypass' }, () => {
+                        if (chrome.runtime.lastError) {
+                            console.error('[SplitView] Failed to enable header bypass:', chrome.runtime.lastError);
+                        }
+                        window.location.reload();
+                    });
+                });
+            });
+        }
+
+        // Enable CSP bypass for a fresh visit and reload once
+        _enableBypassAndReload() {
+            chrome.storage.local.set({
+                splitview_csp_ready: this.pageKey,
+                splitview_scroll_y: 0
+            }, () => {
+                if (chrome.runtime.lastError) {
+                    console.error('[SplitView] Failed to set CSP ready flag:', chrome.runtime.lastError);
+                    return;
+                }
+                chrome.runtime.sendMessage({ action: 'enableHeaderBypass' }, () => {
                     if (chrome.runtime.lastError) {
                         console.error('[SplitView] Failed to enable header bypass:', chrome.runtime.lastError);
                     }
@@ -231,11 +272,20 @@
             document.body.classList.remove('splitview-active');
             this._unpushPage();
 
-            // Clear active state and disable header bypass
-            chrome.storage.local.remove(['splitview_active_page'], () => {
+            // Remove this page from persistent active pages and disable header bypass
+            chrome.storage.local.get(['splitview_active_pages'], (result) => {
                 if (chrome.runtime.lastError) {
-                    console.error('[SplitView] Failed to clear active state:', chrome.runtime.lastError);
+                    console.error('[SplitView] Failed to read active pages:', chrome.runtime.lastError);
+                    return;
                 }
+                const activePages = result.splitview_active_pages || {};
+                delete activePages[this.pageKey];
+
+                chrome.storage.local.set({ splitview_active_pages: activePages }, () => {
+                    if (chrome.runtime.lastError) {
+                        console.error('[SplitView] Failed to clear active state:', chrome.runtime.lastError);
+                    }
+                });
             });
             chrome.runtime.sendMessage({ action: 'disableHeaderBypass' }, () => {
                 if (chrome.runtime.lastError) {
@@ -293,8 +343,8 @@
 
         _setupKeyboardShortcuts() {
             document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && this.isActive) {
-                    this.deactivate();
+                if (e.key === 'Escape' && this.isActive && this.panelVisible) {
+                    this._hidePanel();
                 }
             });
         }
