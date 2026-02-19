@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <circle cx="64" cy="64" r="64" fill="#000000"/>
+  
+  <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="butt" stroke-linejoin="round">
+    <!-- Center the Group -->
+    <!-- Total Width 84px - from x=22 to x=106 -->
+    <!-- Center = 64 -->
+    
+    <!-- Vertical Bar (|) -->
+    <!-- X=22 -->
+    <line x1="22" y1="36" x2="22" y2="92" stroke-linecap="round" />
+    
+    <!-- Left Bracket ([) -->
+    <!-- X=32 -->
+    <polyline points="42 36, 32 36, 32 92, 42 92" />
+    
+    <!-- Angular Infinity (Wide) -->
+    <!-- Left Rect: x=46, y=50, w=22, h=28 -->
+    <!-- Right Rect: x=72, y=50, w=22, h=28 -->
+    <!-- Gap 4 -->
+    <rect x="46" y="50" width="22" height="28" />
+    <rect x="72" y="50" width="22" height="28" />
+    
+    <!-- Right Bracket (]) -->
+    <!-- X=98 -->
+    <polyline points="96 36, 106 36, 106 92, 96 92" />
+    
+  </g>
+</svg>
