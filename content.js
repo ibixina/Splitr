@@ -22,15 +22,13 @@
             this.iframe = null;
             this.activeIndicator = null;
             this.isDragging = false;
+            this._uiCreated = false;
             this.pageKey = `splitview_${window.location.hostname}${window.location.pathname}`;
 
             this.init();
         }
 
-        async init() {
-            await this._loadSavedWidth();
-            this._createActiveIndicator();
-            this._createPanel();
+        init() {
             this._setupLinkInterception();
             this._setupKeyboardShortcuts();
 
@@ -86,7 +84,15 @@
             });
         }
 
-        // ===== UI Creation =====
+        // ===== UI Creation (lazy — only when activated) =====
+
+        async _ensureUICreated() {
+            if (this._uiCreated) return;
+            this._uiCreated = true;
+            await this._loadSavedWidth();
+            this._createActiveIndicator();
+            this._createPanel();
+        }
 
         _createActiveIndicator() {
             this.activeIndicator = document.createElement('div');
@@ -195,7 +201,8 @@
             }
         }
 
-        activate() {
+        async activate() {
+            await this._ensureUICreated();
             this.isActive = true;
             this.activeIndicator.style.display = 'block';
             document.body.classList.add('splitview-active');
@@ -248,7 +255,8 @@
         }
 
         // Called after reload to restore active state without re-reloading
-        _restoreActiveState(scrollY) {
+        async _restoreActiveState(scrollY) {
+            await this._ensureUICreated();
             this.isActive = true;
             this.activeIndicator.style.display = 'block';
             document.body.classList.add('splitview-active');
@@ -320,8 +328,14 @@
         // ===== Link Interception =====
 
         _setupLinkInterception() {
+            // Bubble phase: let the page's own handlers (SPA routers, dynamic
+            // content loaders) run first. If they called preventDefault(), the
+            // page is handling navigation dynamically — we leave it alone.
+            // Only links whose default action (full page load) was NOT prevented
+            // get intercepted into the split view panel.
             document.addEventListener('click', (e) => {
                 if (!this.isActive) return;
+                if (e.defaultPrevented) return; // Page handled it dynamically
 
                 const link = e.target.closest('a');
                 if (!link) return;
@@ -331,12 +345,19 @@
                 if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
                 if (link.hasAttribute('download')) return;
 
+                // Skip same-page hash links (e.g. /page#section)
+                let linkUrl;
+                try { linkUrl = new URL(href, window.location.href); } catch { return; }
+                if (linkUrl.origin === window.location.origin &&
+                    linkUrl.pathname === window.location.pathname &&
+                    linkUrl.hash) return;
+
                 e.preventDefault();
                 e.stopPropagation();
 
                 this.openUrl(href);
                 this._showLinkToast(href);
-            }, true);
+            }); // bubble phase — no capture flag
         }
 
         // ===== Keyboard =====
