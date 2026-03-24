@@ -26,7 +26,7 @@ async function enableHeaderBypass(tabId) {
                     ]
                 },
                 condition: {
-                    resourceTypes: ['sub_frame', 'main_frame'],
+                    resourceTypes: ['sub_frame'],
                     tabIds: [tabId]
                 }
             }]
